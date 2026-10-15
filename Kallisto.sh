@@ -23,6 +23,8 @@ Location of Kallisto program:
 #SBATCH --time=2:00:00
 
 /nfs4/IB/Weis_Lab/burleigo/aiptasia_genome/kallisto/kallisto/kallisto index -i Aip_Slin_kallisto_index.idx combined_RNA_Aip_Slin.fna
+##########################################################################################
+
 
 
 ############### 2. KALLISTO ALIGNMENT OF PAIRED READS (kallisto_alignment_paired.sh) ################
@@ -54,6 +56,9 @@ kallisto="/nfs4/IB/Weis_Lab/burleigo/aiptasia_genome/kallisto/kallisto/kallisto"
     -b 100 -t 8 \
     "${input_dir}/${sample}_R1_val_1_val_1.148bp_5prime_val_1.fq.gz" \
     "${input_dir}/${sample}_R2_val_2_val_2.148bp_5prime_val_2.fq.gz"
+#########################################################################################################
+
+
 
 
 ############### 3. PSEUDOALIGNMENT SUMMARY (summarize_kallisto_runinfo.sh) ################
@@ -77,7 +82,7 @@ for json in "${base}"/paired_aligned_output/paired_*_run_info.json; do
   echo -e "${sample}\t${n_processed}\t${n_pseudo}\t${p_pseudo}\t${p_unique}" >> "${out}"
 done
 
-#### Output: kallisto_runinfo_summary.tsv
+#### Output: kallisto_runinfo_summary.tsv ####
 #sample	n_processed	n_pseudoaligned	p_pseudoaligned	p_unique
 #CA1_RNA	27569921	17900031	64.9	62.3
 #CA2_RNA	28525502	18106487	63.5	60.8
@@ -97,6 +102,8 @@ done
 #HS61_RNA	32203775	19536542	60.7	58.6
 #HS62_RNA	25426394	16474324	64.8	62.3
 #HS63_RNA	32309241	22566906	69.8	67.2
+########################################################################################################################
+
 
 
 ############### 4. SEPARATE AND REMOVE SYMBIONT FROM HOST READS (sep_hostsym_paired_reads.sh) ################
@@ -140,6 +147,7 @@ END{
   print "Sample","total_est_counts","host_est_counts","sym_est_counts","host_frac","sym_frac"
   print "'"${sample}"'", total, host, sym, hf, sf
 }' "${in}" > "${qc_out}"
+#######################################################################################################################
 
 
 
