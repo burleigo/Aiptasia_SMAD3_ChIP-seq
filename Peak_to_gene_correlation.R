@@ -61,7 +61,7 @@ promoter_gr <- promoters(tss_gr, upstream = promoter_bp, downstream = promoter_b
 ###############################################################################
 # RNA-SEQ RESULTS (AIPGENE -> LOC_id)
 
-conv <- read_csv(conv_file, show_col_types = FALSE) %>% distinct(AIPGENE, LOC_ID) %>% rename(LOC_id = LOC_ID)
+conv <- read_csv(conv_file, show_col_types = FALSE) %>% distinct(AIPGENE, LOC_ID) %>% dplyr::rename(LOC_id = LOC_ID)
 
 load_rna <- function(comp) {
   read_csv(file.path(rnaseq_dir, paste0(comp, "_ALL_results.csv")), show_col_types = FALSE) %>%
@@ -136,12 +136,18 @@ for (comp in contrasts) {
 
 master_summary <- bind_rows(summary_rows)
 print(master_summary)
-  # contrast        n_sig_peaks n_sig_peaks_in_promoter n_genes_near_sig
-  # CS_vs_CA               1448                     653              864
-  # HS6_vs_HA6              282                     113              135
-  # HS18_vs_HA18           5636                    2642             3260
+  # contrast        n_sig_peaks n_sig_peaks_in_promoter n_genes_near_sig n_rna_universe n_rna_degs n_chip_rna_genes
+  # 1 CS_vs_CA               1448                     653              864          18576       4848              176
+  # 2 HS6_vs_HA6              280                     113              135          18576       8046               44
+  # 3 HS18_vs_HA18           5636                    2642             3260          18576       3155              446
+  # 4 HA6_vs_CA               183                      76               94          18576       4717               20
+  # 5 HA18_vs_CA              102                      35               52          18576       1741                5
+  # 6 HS6_vs_CS                63                      39               53          18576       3888                9
+  # 7 HS18_vs_CS                0                       0                0          18576       2108                0
+  # 8 Interaction_6h           97                      39               46          18576       1311                1
+  # 9 Interaction_18h          41                      12               17          18576        111                0
 
-write_tsv(master_summary, file.path(output_root, "master_contrast_summary.tsv"))
+write_tsv(master_summary, file.path(output_root, "PeakToGene_All_contrasts_summary.tsv"))
 
 ###############################################################################
 # ACTIVATION / REPRESSION TARGET GENE COUNTS
@@ -149,26 +155,35 @@ write_tsv(master_summary, file.path(output_root, "master_contrast_summary.tsv"))
 
 all_genes <- bind_rows(all_genes) %>%
   distinct(contrast, LOC_id, gene_desc, chip_log2FC, rna_log2FC, rna_padj, rna_direction, dist_to_tss, .keep_all = TRUE)
+
 write_csv(all_genes, file.path(intersection_dir, "ALL_contrasts_intersection_genes.csv"))
 nrow(all_genes) 
   # 752 gene-peak-contrast rows
+
+direction_levels <- c("ChIP_up_RNA_up", "ChIP_up_RNA_down", "ChIP_down_RNA_up", "ChIP_down_RNA_down")
 
 direction_summary <- all_genes %>%
   group_by(contrast, LOC_id) %>%
   slice_min(chip_padj, n = 1, with_ties = FALSE) %>%
   ungroup() %>%
-  mutate(chip_dir = if_else(chip_log2FC > 0, "up", "down")) %>%
-  count(contrast, chip_dir, rna_direction) %>%
-  mutate(category = paste0("ChIP_", chip_dir, "_RNA_", tolower(rna_direction))) %>%
-  dplyr::select(contrast, category, n) %>%
-  pivot_wider(names_from = category, values_from = n, values_fill = 0)
+  mutate(contrast = factor(contrast, levels = contrasts),
+         category = factor(paste0("ChIP_", if_else(chip_log2FC > 0, "up", "down"), "_RNA_", tolower(rna_direction)),
+                           levels = direction_levels)) %>%
+  count(contrast, category, .drop = FALSE) %>%
+  pivot_wider(names_from = category, values_from = n)
 
 print(direction_summary)
 write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_uniqueGenes.csv"))
-    # contrast      ChIP_up_RNA_up (activation)  ChIP_up_RNA_down (repression)
-    # CS_vs_CA        95                           81
-    # HS6_vs_HA6      16                           28
-    # HS18_vs_HA18   144                          302
+  # contrast        ChIP_up_RNA_up ChIP_up_RNA_down ChIP_down_RNA_up ChIP_down_RNA_down
+  # 1 CS_vs_CA                    95               81                0                  0
+  # 2 HS6_vs_HA6                  16               28                0                  0
+  # 3 HS18_vs_HA18               144              302                0                  0
+  # 4 HA6_vs_CA                    1                0               11                  8
+  # 5 HA18_vs_CA                   1                1                2                  1
+  # 6 HS6_vs_CS                    0                0                2                  7
+  # 7 HS18_vs_CS                   0                0                0                  0
+  # 8 Interaction_6h               1                0                0                  0
+  # 9 Interaction_18h              0                0                0                  0
 
 ###############################################################################
 # CONTRASTS OF INTEREST (between symbiotic states at each temperature) 
@@ -192,5 +207,6 @@ count(Between_symState_deg_overlap, n_contrasts)
 # 587 in 1 contrast, 35 in 2 contrasts, 3 in all 3 contrasts
 
 # See how many of these target genes are uncharacterized
-mean(grepl("uncharacterized", Between_symState_deg_overlap$gene_desc, ignore.case = TRUE)) #49.6% (310 / 625)
+mean(grepl("uncharacterized", Between_symState_deg_overlap$gene_desc, ignore.case = TRUE)) 
+  # 49.6% (310 / 625)
 
