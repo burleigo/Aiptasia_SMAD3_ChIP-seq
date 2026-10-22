@@ -174,23 +174,23 @@ write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_
 # CONTRASTS OF INTEREST (between symbiotic states at each temperature) 
 # gene overlap across contrasts
 
-BetwSymSt_deg_overlap <- all_genes %>%
+Between_symState_deg_overlap <- all_genes %>%
   filter(contrast %in% Between_symState_contrasts) %>%
   distinct(LOC_id, gene_desc, contrast, rna_direction) %>%
   arrange(LOC_id, contrast) %>%
   group_by(LOC_id, gene_desc) %>%
-  summarise(n_focal       = n_distinct(contrast),
+  summarise(n_contrasts   = n_distinct(contrast),
             contrasts_sig = paste(contrast, collapse = ";"),
             directions    = paste(rna_direction, collapse = ";"),
             .groups = "drop") %>%
-  arrange(desc(n_focal), gene_desc)
+  arrange(desc(n_contrasts), gene_desc)
 
-write_csv(BetwSymSt_deg_overlap, file.path(intersection_dir, "Between_SymSt_Contrasts_DEG_peak_overlap.csv"))
+write_csv(Between_symState_deg_overlap, file.path(intersection_dir, "Between_symState_DEG_peak_overlap.csv"))
 
-count(BetwSymSt_deg_overlap, n_focal) 
-  # 625 genes total now
-  # 587 in 1 contrast, 35 in 2 contrasts, 3 in all 3 contrasts
+count(Between_symState_deg_overlap, n_contrasts)
+# 625 genes total now
+# 587 in 1 contrast, 35 in 2 contrasts, 3 in all 3 contrasts
 
-# See how many of these target genes are uncharacterized 
-mean(grepl("uncharacterized", BetwSymSt_deg_overlap$gene_desc, ignore.case = TRUE)) #49.6% (310 / 625)
+# See how many of these target genes are uncharacterized
+mean(grepl("uncharacterized", Between_symState_deg_overlap$gene_desc, ignore.case = TRUE)) #49.6% (310 / 625)
 
