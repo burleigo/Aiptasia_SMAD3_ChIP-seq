@@ -84,7 +84,7 @@ map_peaks_to_genes <- function(peak_df) {
   mid  <- floor((peak_df$start + peak_df$end) / 2)
   peak_gr <- GRanges(seqs, IRanges(mid, mid))
 
-  # Drop scaffolds absent from the annotation (avoids seqlevel warnings)
+  # Drop scaffolds absent from the annotation
   keep    <- seqs %in% as.character(seqnames(promoter_gr))
   hits    <- findOverlaps(peak_gr[keep], promoter_gr, ignore.strand = TRUE)
   q       <- which(keep)[queryHits(hits)]
@@ -117,7 +117,7 @@ for (comp in contrasts) {
 
   intersection_tbl <- p2g_sig %>%
     filter(LOC_id %in% rna_degs) %>%
-    left_join(rna %>% dplyr::select(LOC_id, rna_log2FC = log2FoldChange, rna_padj = padj, rna_direction),
+    left_join(rna %>% dplyr::select(LOC_id, gene_id, rna_log2FC = log2FoldChange, rna_padj = padj, rna_direction),
               by = "LOC_id") %>%
     arrange(chip_padj)
 
@@ -150,30 +150,42 @@ print(master_summary)
 write_tsv(master_summary, file.path(output_root, "PeakToGene_All_contrasts_summary.tsv"))
 
 ###############################################################################
-# ACTIVATION / REPRESSION TARGET GENE COUNTS
+# PUTATIVE SMAD3 TARGET GENES (one row per gene per contrast) + ACTIVATION / REPRESSION COUNTS
+# If a gene has several differentially bound peaks in its promoter-proximal window, the peak closest to the TSS is its
+# representative peak (if there is a tie, goes with lower padj)
 # One row per gene; if a gene has several peaks, the lowest-padj peak sets the ChIP peak direction
 
+# All gene-peak pairs: one row per peak–gene–contrast combination. Can have multiple peaks assigned to one DEG.
 all_genes <- bind_rows(all_genes) %>%
   distinct(contrast, LOC_id, gene_desc, chip_log2FC, rna_log2FC, rna_padj, rna_direction, dist_to_tss, .keep_all = TRUE)
 
+nrow(all_genes) # 752 gene-peak-contrast rows
 write_csv(all_genes, file.path(intersection_dir, "ALL_contrasts_intersection_genes.csv"))
-nrow(all_genes) 
-  # 752 gene-peak-contrast rows
 
+# Target genes across all contrasts (reduced to one gene-peak pair per DEG; lower padj peak assigned to DEG)
+targets <- all_genes %>%
+  group_by(contrast, LOC_id) %>%
+  arrange(dist_to_tss, chip_padj, .by_group = TRUE) %>%
+  dplyr::slice(1) %>%
+  ungroup() %>%
+  mutate(smad3_mode = if_else(sign(chip_log2FC) == sign(rna_log2FC), "Activation", "Repression")) %>%
+  dplyr::select(gene_id, LOC_id, gene_desc, contrast, smad3_mode, peak_id, dist_to_tss,
+                chip_log2FC, chip_padj, rna_log2FC, rna_padj, rna_direction)
+
+nrow(targets) # 701 gene-peak-contrast rows now
+write_csv(targets, file.path(intersection_dir, "ALL_contrasts_target_genes.csv"))
+
+# Direction of concordance with ChIP and RNA direction
 direction_levels <- c("ChIP_up_RNA_up", "ChIP_up_RNA_down", "ChIP_down_RNA_up", "ChIP_down_RNA_down")
 
-direction_summary <- all_genes %>%
-  group_by(contrast, LOC_id) %>%
-  slice_min(chip_padj, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
+direction_summary <- targets %>%
   mutate(contrast = factor(contrast, levels = contrasts),
          category = factor(paste0("ChIP_", if_else(chip_log2FC > 0, "up", "down"), "_RNA_", tolower(rna_direction)),
                            levels = direction_levels)) %>%
-  count(contrast, category, .drop = FALSE) %>%
+  dplyr::count(contrast, category, .drop = FALSE) %>%
   pivot_wider(names_from = category, values_from = n)
 
 print(direction_summary)
-write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_uniqueGenes.csv"))
   # contrast        ChIP_up_RNA_up ChIP_up_RNA_down ChIP_down_RNA_up ChIP_down_RNA_down
   # 1 CS_vs_CA                    95               81                0                  0
   # 2 HS6_vs_HA6                  16               28                0                  0
@@ -185,13 +197,15 @@ write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_
   # 8 Interaction_6h               1                0                0                  0
   # 9 Interaction_18h              0                0                0                  0
 
+write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_uniqueGenes.csv"))
+
+
 ###############################################################################
 # CONTRASTS OF INTEREST (between symbiotic states at each temperature) 
 # gene overlap across contrasts
 
-Between_symState_deg_overlap <- all_genes %>%
+Between_symState_deg_overlap <- targets %>%
   filter(contrast %in% Between_symState_contrasts) %>%
-  distinct(LOC_id, gene_desc, contrast, rna_direction) %>%
   arrange(LOC_id, contrast) %>%
   group_by(LOC_id, gene_desc) %>%
   summarise(n_contrasts   = n_distinct(contrast),
@@ -200,13 +214,14 @@ Between_symState_deg_overlap <- all_genes %>%
             .groups = "drop") %>%
   arrange(desc(n_contrasts), gene_desc)
 
-write_csv(Between_symState_deg_overlap, file.path(intersection_dir, "Between_symState_DEG_peak_overlap.csv"))
+nrow(Between_symState_deg_overlap) # 625 gene-peak pairs for sym-state contrasts of interest now
 
-count(Between_symState_deg_overlap, n_contrasts)
-# 625 genes total now
+dplyr::count(Between_symState_deg_overlap, n_contrasts)
 # 587 in 1 contrast, 35 in 2 contrasts, 3 in all 3 contrasts
 
-# See how many of these target genes are uncharacterized
+write_csv(Between_symState_deg_overlap, file.path(intersection_dir, "Between_symState_DEG_peak_overlap.csv"))
+
+# See how many of these target genes are uncharacterized.
 mean(grepl("uncharacterized", Between_symState_deg_overlap$gene_desc, ignore.case = TRUE)) 
   # 49.6% (310 / 625)
 
