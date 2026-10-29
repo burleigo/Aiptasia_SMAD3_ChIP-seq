@@ -32,6 +32,19 @@ contrasts <- c("CS_vs_CA", "HS6_vs_HA6", "HS18_vs_HA18",
 # Contrasts of interest for this integration of datasets
 Between_symState_contrasts <- c("CS_vs_CA", "HS6_vs_HA6", "HS18_vs_HA18")
 
+333
+rna <- read_csv(file.path(rnaseq_dir, "CS_vs_CA_ALL_results.csv"), show_col_types = FALSE)
+sum(!rna$gene_id %in% gene_mapping$AIPGENE)                    # 6382; unmatched RNA-seq features
+head(setdiff(rna$gene_id, read_tsv(gca_feature_tbl, show_col_types = FALSE)$locus_tag |> sub("^AC249_", "", x = _)))
+
+gca_ids <- sub("^AC249_", "", read_tsv(gca_feature_tbl, show_col_types = FALSE)$locus_tag)
+unmatched <- setdiff(rna$gene_id, gene_mapping$AIPGENE)
+
+sum(!unmatched %in% gca_ids)   # not in GenBank annotation (no coordinates)
+sum(unmatched %in% gca_ids)    # in GenBank but no same-strand RefSeq overlap
+
+
+
 ###############################################################################
 # GENOME ANNOTATION: Identify genomic locations of TSS's and promoter-proximal windows for each gene
 # GenBank (DiffBind peaks) -> RefSeq (feature table) scaffold names
@@ -175,7 +188,7 @@ targets <- all_genes %>%
 nrow(targets) # 701 gene-peak-contrast rows now
 write_csv(targets, file.path(intersection_dir, "ALL_contrasts_target_genes.csv"))
 
-# Direction of concordance with ChIP and RNA direction
+# Summary: Direction of concordance with ChIP and RNA direction
 direction_levels <- c("ChIP_up_RNA_up", "ChIP_up_RNA_down", "ChIP_down_RNA_up", "ChIP_down_RNA_down")
 
 direction_summary <- targets %>%
@@ -201,8 +214,8 @@ write_csv(direction_summary, file.path(output_root, "ChIP_RNA_direction_summary_
 
 
 ###############################################################################
-# CONTRASTS OF INTEREST (between symbiotic states at each temperature) 
-# gene overlap across contrasts
+# CONTRASTS OF INTEREST (symbiotic state contrasts at each temperature) 
+# gene overlap across contrasts to see 
 
 Between_symState_deg_overlap <- targets %>%
   filter(contrast %in% Between_symState_contrasts) %>%
@@ -216,6 +229,7 @@ Between_symState_deg_overlap <- targets %>%
 
 nrow(Between_symState_deg_overlap) # 625 gene-peak pairs for sym-state contrasts of interest now
 
+# See how many sig. peak-gene pairs are shared across the contrasts at each temp
 dplyr::count(Between_symState_deg_overlap, n_contrasts)
 # 587 in 1 contrast, 35 in 2 contrasts, 3 in all 3 contrasts
 

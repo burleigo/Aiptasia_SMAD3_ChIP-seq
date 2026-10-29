@@ -10,7 +10,6 @@ library(topGO)
 library(GO.db)
 library(ggplot2)
 library(ggprism)
-library(GenomicRanges)
 
 data_dir    <- "/Users/oliviaburleigh/Documents/SEQ_DATA"
 rnaseq_dir  <- file.path(data_dir, "DESEQ2/output_files/full_results_for_topGO")
@@ -18,6 +17,8 @@ gene2go_tsv <- file.path(data_dir, "GO_Enrichment/Aiptasia_gene2go.tsv")
 conv_file   <- file.path(data_dir, "Aiptasia_Genome/LOC_to_AIPGENE_conversion.csv")
 
 output_root <- file.path(data_dir, "GO_Enrichment/topGO_PeakToGene/topGO_ds_promoterOverlap")
+targets_file <- file.path(output_root, "Intersection_gene_lists/ALL_contrasts_target_genes.csv")
+
 tsv_dir     <- file.path(output_root, "TSV_files")
 plot_dir    <- file.path(output_root, "GO_plots")
 dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
@@ -48,9 +49,8 @@ gene2go <- setNames(strsplit(gene2go$GO_ID, ";"), gene2go$LOC_id)
 # All genes tested in DESeq2 that have GO annotations
 
 conv <- read_csv(conv_file, show_col_types = FALSE) %>% distinct(AIPGENE, LOC_ID) %>% dplyr::rename(LOC_id = LOC_ID)
-names(conv)
 
-# All of the RNA-seq *_ALL_results.csv files have the same list of genes from the dds_int model (see RNA_DESeq2.R)
+# All of the RNA-seq *_ALL_results.csv files have the same list of genes from the dds_int model (see DESeq2_RNAseq.R)
 rna_background <- read_csv(file.path(rnaseq_dir, "CS_vs_CA_ALL_results.csv"), show_col_types = FALSE) %>%
   inner_join(conv, by = c("gene_id" = "AIPGENE")) %>%
   pull(LOC_id) %>%
@@ -59,6 +59,18 @@ rna_background <- read_csv(file.path(rnaseq_dir, "CS_vs_CA_ALL_results.csv"), sh
 go_background <- intersect(rna_background, names(gene2go))
 length(go_background)
   # RNA background for topGO: 12,893 expressed genes with GO annotations
+
+###############################################################################
+# PUTATIVE SMAD3 TARGET GENES (from Peak_to_gene_correlation.R)
+
+targets <- read_csv(targets_file, show_col_types = FALSE) %>%
+  filter(contrast %in% Between_symState_contrasts) %>%
+  mutate(direction = paste0("ChIP_", if_else(chip_log2FC > 0, "up", "down"), "_RNA_", tolower(rna_direction)))
+
+dplyr::count(targets, contrast, direction)
+  # CS_vs_CA      ChIP_up_RNA_up 95, ChIP_up_RNA_down 81
+  # HS6_vs_HA6    ChIP_up_RNA_up 16, ChIP_up_RNA_down 28
+  # HS18_vs_HA18  ChIP_up_RNA_up 144, ChIP_up_RNA_down 302
 
 ###############################################################################
 # MAKE topGO FUNCTION
@@ -70,6 +82,7 @@ run_topgo <- function(target_genes, ontology) {
   
   go_data <- new("topGOdata", ontology = ontology, allGenes = gene_list,
                  annot = annFUN.gene2GO, gene2GO = gene2go, nodeSize = node_size)
+  
   go_result <- runTest(go_data, algorithm = "weight01", statistic = "fisher")
   
   GenTable(go_data, weightFisher = go_result, orderBy = "weightFisher",
@@ -115,12 +128,12 @@ plot_topgo <- function(go_tbl, plot_title) {
 
 for (comp in Between_symState_contrasts) {
   outdir <- file.path(tsv_dir, comp)
+  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
   
-  intersection_tbl <- read_tsv(file.path(outdir, paste0(comp, "_ChIP_RNA_intersection.tsv")), show_col_types = FALSE) %>%
-    mutate(direction = paste0("ChIP_", if_else(chip_log2FC > 0, "up", "down"), "_RNA_", tolower(rna_direction)))
+  comp_targets <- filter(targets, contrast == comp)
   
-  for (direction in unique(intersection_tbl$direction)) {
-    target_genes <- unique(intersection_tbl$LOC_id[intersection_tbl$direction == direction])
+  for (direction in unique(comp_targets$direction)) {
+    target_genes <- comp_targets$LOC_id[comp_targets$direction == direction]
     if (length(target_genes) < min_genes) next
     message(comp, " | ", direction, " | n = ", length(target_genes))
     
